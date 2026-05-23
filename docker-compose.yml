@@ -2,6 +2,9 @@ services:
   api:
     build: .
     container_name: ai-saas-api
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -11,4 +14,26 @@ services:
       - YOLO_MODEL_PATH=yolo11n.pt
       - YOLO_CONF_THRESHOLD=0.25
       - YOLO_IMAGE_SIZE=640
+      - DATABASE_URL=postgresql+psycopg2://ai_user:ai_password@postgres:5432/ai_saas
     restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-saas-postgres
+    environment:
+      - POSTGRES_USER=ai_user
+      - POSTGRES_PASSWORD=ai_password
+      - POSTGRES_DB=ai_saas
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_user -d ai_saas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

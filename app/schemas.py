@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -31,3 +34,13 @@ class ImageResponse(BaseModel):
     num_predictions: int
     predictions: list[ImagePrediction]
     model: str
+
+
+class InteractionHistoryResponse(BaseModel):
+    id: int
+    request_type: str
+    input_summary: str | None
+    model: str | None
+    status_code: int
+    output: dict[str, Any]
+    created_at: datetime

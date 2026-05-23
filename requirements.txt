@@ -6,3 +6,5 @@ pytest
 httpx
 pillow
 ultralytics
+sqlalchemy
+psycopg2-binary
