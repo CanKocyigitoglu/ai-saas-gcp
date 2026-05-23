@@ -1,0 +1,10 @@
+services:
+  api:
+    build: .
+    container_name: ai-saas-api
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - APP_ENV=development
+      - PYTHONPATH=/app
+    restart: unless-stopped
