@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.crud import (
@@ -12,10 +12,20 @@ from app.crud import (
 )
 from app.database import get_db, init_db
 from app.schemas import (
+    FirebaseOutputCreate,
+    FirebaseOutputResponse,
+    FirebaseOutputUpdate,
     ImageResponse,
     InteractionHistoryResponse,
     TextRequest,
     TextResponse,
+)
+from app.services.firebase_store import (
+    delete_model_output as firebase_delete_model_output,
+    get_model_output as firebase_get_model_output,
+    list_model_outputs as firebase_list_model_outputs,
+    save_model_output as firebase_save_model_output,
+    update_model_output as firebase_update_model_output,
 )
 from app.services.inference import predict_image_objects
 from app.services.llm_client import generate_bitnet_response
@@ -30,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -46,7 +56,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.4.0",
+        "version": "0.5.0",
     }
 
 
@@ -70,6 +80,18 @@ async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
         output=output,
         model="bitnet-b1.58-2B-4T",
     )
+
+    try:
+        firebase_doc = firebase_save_model_output(
+            request_type="text",
+            input_summary=request.prompt[:500],
+            model=response.model,
+            output=pydantic_to_dict(response),
+            metadata={"endpoint": "/api/v1/text/generate"},
+        )
+        response.firebase_output_id = firebase_doc.get("id")
+    except RuntimeError:
+        response.firebase_output_id = None
 
     create_interaction(
         db=db,
@@ -107,6 +129,18 @@ async def predict_image(file: UploadFile = File(...), db: Session = Depends(get_
         predictions=predictions,
         model="yolo11n",
     )
+
+    try:
+        firebase_doc = firebase_save_model_output(
+            request_type="image",
+            input_summary=f"{file.filename} | {file.content_type} | {size_bytes} bytes",
+            model=response.model,
+            output=pydantic_to_dict(response),
+            metadata={"endpoint": "/api/v1/image/predict"},
+        )
+        response.firebase_output_id = firebase_doc.get("id")
+    except RuntimeError:
+        response.firebase_output_id = None
 
     create_interaction(
         db=db,
@@ -147,3 +181,84 @@ def get_history_item(interaction_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Interaction not found.")
 
     return interaction_to_dict(interaction)
+
+
+@app.post(
+    "/api/v1/firebase/outputs",
+    response_model=FirebaseOutputResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_firebase_output(payload: FirebaseOutputCreate):
+    try:
+        return firebase_save_model_output(
+            request_type=payload.request_type,
+            input_summary=payload.input_summary,
+            model=payload.model,
+            output=payload.output,
+            metadata=payload.metadata,
+            source_interaction_id=payload.source_interaction_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/firebase/outputs", response_model=list[FirebaseOutputResponse])
+def list_firebase_outputs(
+    request_type: str | None = Query(
+        default=None,
+        pattern="^(text|image|manual)$",
+        description="Filter by stored output type",
+    ),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    try:
+        return firebase_list_model_outputs(
+            request_type=request_type,
+            limit=limit,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/firebase/outputs/{document_id}", response_model=FirebaseOutputResponse)
+def get_firebase_output(document_id: str):
+    try:
+        item = firebase_get_model_output(document_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="Firebase output not found.")
+
+    return item
+
+
+@app.patch("/api/v1/firebase/outputs/{document_id}", response_model=FirebaseOutputResponse)
+def update_firebase_output(document_id: str, payload: FirebaseOutputUpdate):
+    updates = payload.model_dump(exclude_unset=True)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No update fields provided.")
+
+    try:
+        item = firebase_update_model_output(document_id, updates)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="Firebase output not found.")
+
+    return item
+
+
+@app.delete("/api/v1/firebase/outputs/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_firebase_output(document_id: str):
+    try:
+        deleted = firebase_delete_model_output(document_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Firebase output not found.")
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

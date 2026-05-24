@@ -5,6 +5,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      bitnet:
+        condition: service_started
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -18,6 +20,8 @@ services:
       - BITNET_BASE_URL=http://bitnet:8080
       - BITNET_MODEL_NAME=microsoft/bitnet-b1.58-2B-4T
       - BITNET_TIMEOUT_SECONDS=180
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_OUTPUT_COLLECTION=${FIREBASE_OUTPUT_COLLECTION:-model_outputs}
     restart: unless-stopped
 
   bitnet:
@@ -32,7 +36,7 @@ services:
       - BITNET_PORT=8080
       - BITNET_THREADS=4
       - BITNET_CTX_SIZE=2048
-      - BITNET_N_PREDICT=256
+      - BITNET_N_PREDICT=128
       - BITNET_TEMPERATURE=0.7
     restart: unless-stopped
 

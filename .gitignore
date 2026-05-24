@@ -15,3 +15,8 @@ data/
 BitNet/
 models/
 *.gguf
+
+# Firebase credentials and local environment
+secrets/
+firebase-service-account*.json
+.env

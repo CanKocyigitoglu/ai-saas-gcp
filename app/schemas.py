@@ -12,6 +12,7 @@ class TextResponse(BaseModel):
     input: str
     output: str
     model: str
+    firebase_output_id: str | None = None
 
 
 class BoundingBox(BaseModel):
@@ -34,6 +35,7 @@ class ImageResponse(BaseModel):
     num_predictions: int
     predictions: list[ImagePrediction]
     model: str
+    firebase_output_id: str | None = None
 
 
 class InteractionHistoryResponse(BaseModel):
@@ -44,3 +46,31 @@ class InteractionHistoryResponse(BaseModel):
     status_code: int
     output: dict[str, Any]
     created_at: datetime
+
+
+class FirebaseOutputCreate(BaseModel):
+    request_type: str = Field(..., pattern="^(text|image|manual)$")
+    input_summary: str | None = None
+    model: str | None = None
+    output: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source_interaction_id: int | None = None
+
+
+class FirebaseOutputUpdate(BaseModel):
+    input_summary: str | None = None
+    model: str | None = None
+    output: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class FirebaseOutputResponse(BaseModel):
+    id: str
+    request_type: str
+    input_summary: str | None = None
+    model: str | None = None
+    output: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    source_interaction_id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
