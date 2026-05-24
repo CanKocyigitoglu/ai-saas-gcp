@@ -1,0 +1,122 @@
+FROM python:3.11-slim
+
+WORKDIR /opt
+
+ENV PYTHONUNBUFFERED=1
+ENV CC=clang-18
+ENV CXX=clang++-18
+ENV BITNET_PORT=8080
+ENV BITNET_HOST=0.0.0.0
+ENV BITNET_THREADS=4
+ENV BITNET_CTX_SIZE=2048
+ENV BITNET_N_PREDICT=128
+ENV BITNET_TEMPERATURE=0.7
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    wget \
+    curl \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libcurl4-openssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install LLVM/Clang 18 explicitly.
+RUN wget -O /tmp/llvm.sh https://apt.llvm.org/llvm.sh \
+    && chmod +x /tmp/llvm.sh \
+    && /tmp/llvm.sh 18 \
+    && rm /tmp/llvm.sh
+
+RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 100 \
+    && update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+
+RUN git clone --recursive https://github.com/microsoft/BitNet.git
+
+WORKDIR /opt/BitNet
+
+RUN git submodule update --init --recursive
+
+# Patch known llama.cpp chrono include issue if needed.
+RUN python - <<'PY_CHRONO'
+from pathlib import Path
+
+target_suffixes = {
+    "common/log.cpp",
+    "examples/imatrix/imatrix.cpp",
+    "examples/perplexity/perplexity.cpp",
+}
+
+patched = []
+
+for path in Path(".").rglob("*.cpp"):
+    normalized = str(path).replace("\\", "/")
+    if not any(normalized.endswith(suffix) for suffix in target_suffixes):
+        continue
+
+    text = path.read_text(errors="ignore")
+
+    if "#include <chrono>" in text:
+        continue
+
+    lines = text.splitlines()
+    insert_at = None
+
+    for index, line in enumerate(lines):
+        if line.startswith("#include"):
+            insert_at = index + 1
+            break
+
+    if insert_at is not None:
+        lines.insert(insert_at, "#include <chrono>")
+        path.write_text("\n".join(lines) + "\n")
+        patched.append(normalized)
+
+print("Patched chrono files:", patched)
+PY_CHRONO
+
+# Patch BitNet const-correctness issue observed with clang.
+# Error: int8_t* y_col cannot be initialized from const int8_t*.
+RUN python - <<'PY_CONST'
+from pathlib import Path
+import re
+
+path = Path("src/ggml-bitnet-mad.cpp")
+text = path.read_text()
+
+text, n = re.subn(
+    r"\bint8_t\s*\*\s*y_col\s*=\s*y\s*\+\s*col\s*\*\s*by\s*;",
+    "const int8_t * y_col = y + col * by;",
+    text,
+)
+
+if n == 0:
+    raise SystemExit("Patch target not found: y_col const mismatch")
+
+path.write_text(text)
+print(f"Patched y_col const mismatch occurrences: {n}")
+PY_CONST
+
+RUN pip install --no-cache-dir -r requirements.txt huggingface_hub
+
+RUN huggingface-cli download microsoft/BitNet-b1.58-2B-4T-gguf \
+    --local-dir models/BitNet-b1.58-2B-4T
+
+# If compilation fails, print BitNet's compile log.
+RUN python setup_env.py -md models/BitNet-b1.58-2B-4T -q i2_s \
+    || (echo "===== BitNet compile.log =====" && cat logs/compile.log && exit 1)
+
+EXPOSE 8080
+
+CMD python run_inference_server.py \
+    -m models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf \
+    --host ${BITNET_HOST} \
+    --port ${BITNET_PORT} \
+    -t ${BITNET_THREADS} \
+    -c ${BITNET_CTX_SIZE} \
+    -n ${BITNET_N_PREDICT} \
+    --temperature ${BITNET_TEMPERATURE}

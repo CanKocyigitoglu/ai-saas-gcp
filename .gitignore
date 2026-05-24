@@ -10,3 +10,8 @@ venv/
 mlruns/
 models/
 data/
+
+# Local model/build artifacts
+BitNet/
+models/
+*.gguf

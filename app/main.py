@@ -17,7 +17,8 @@ from app.schemas import (
     TextRequest,
     TextResponse,
 )
-from app.services.inference import generate_text_response, predict_image_objects
+from app.services.inference import predict_image_objects
+from app.services.llm_client import generate_bitnet_response
 
 
 @asynccontextmanager
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -45,18 +46,29 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.3.0",
+        "version": "0.4.0",
     }
 
 
 @app.post("/api/v1/text/generate", response_model=TextResponse)
-def generate_text(request: TextRequest, db: Session = Depends(get_db)):
-    output = generate_text_response(request.prompt)
+async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
+    try:
+        output = await generate_bitnet_response(request.prompt)
+    except RuntimeError as exc:
+        create_interaction(
+            db=db,
+            request_type="text",
+            input_summary=request.prompt[:500],
+            output={"error": str(exc)},
+            model="bitnet-b1.58-2B-4T",
+            status_code=503,
+        )
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     response = TextResponse(
         input=request.prompt,
         output=output,
-        model="bitnet-placeholder",
+        model="bitnet-b1.58-2B-4T",
     )
 
     create_interaction(

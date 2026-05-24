@@ -15,6 +15,25 @@ services:
       - YOLO_CONF_THRESHOLD=0.25
       - YOLO_IMAGE_SIZE=640
       - DATABASE_URL=postgresql+psycopg2://ai_user:ai_password@postgres:5432/ai_saas
+      - BITNET_BASE_URL=http://bitnet:8080
+      - BITNET_MODEL_NAME=microsoft/bitnet-b1.58-2B-4T
+      - BITNET_TIMEOUT_SECONDS=180
+    restart: unless-stopped
+
+  bitnet:
+    build:
+      context: .
+      dockerfile: Dockerfile.bitnet
+    container_name: ai-saas-bitnet
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - BITNET_HOST=0.0.0.0
+      - BITNET_PORT=8080
+      - BITNET_THREADS=4
+      - BITNET_CTX_SIZE=2048
+      - BITNET_N_PREDICT=256
+      - BITNET_TEMPERATURE=0.7
     restart: unless-stopped
 
   postgres:
