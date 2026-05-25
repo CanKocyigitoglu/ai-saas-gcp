@@ -12,6 +12,7 @@ from app.crud import (
 )
 from app.database import get_db, init_db
 from app.schemas import (
+    AuthenticatedUserResponse,
     FirebaseOutputCreate,
     FirebaseOutputResponse,
     FirebaseOutputUpdate,
@@ -21,14 +22,15 @@ from app.schemas import (
     TextRequest,
     TextResponse,
 )
+from app.services.auth import get_current_user
 from app.services.firebase_store import (
     delete_model_output as firebase_delete_model_output,
     get_model_output as firebase_get_model_output,
+    get_postprocessed_output as firebase_get_postprocessed_output,
     list_model_outputs as firebase_list_model_outputs,
+    list_postprocessed_outputs as firebase_list_postprocessed_outputs,
     save_model_output as firebase_save_model_output,
     update_model_output as firebase_update_model_output,
-    get_postprocessed_output as firebase_get_postprocessed_output,
-    list_postprocessed_outputs as firebase_list_postprocessed_outputs,
 )
 from app.services.inference import predict_image_objects
 from app.services.llm_client import generate_bitnet_response
@@ -44,7 +46,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -55,17 +57,35 @@ def pydantic_to_dict(model: Any) -> dict[str, Any]:
     return model.dict()
 
 
+def user_metadata(current_user: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "user_uid": current_user.get("uid"),
+        "user_email": current_user.get("email"),
+    }
+
+
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.6.0",
+        "version": "0.7.0",
     }
 
 
+@app.get("/api/v1/auth/me", response_model=AuthenticatedUserResponse)
+def get_authenticated_user(
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
+    return current_user
+
+
 @app.post("/api/v1/text/generate", response_model=TextResponse)
-async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
+async def generate_text(
+    request: TextRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         output = await generate_bitnet_response(request.prompt)
     except RuntimeError as exc:
@@ -91,7 +111,10 @@ async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
             input_summary=request.prompt[:500],
             model=response.model,
             output=pydantic_to_dict(response),
-            metadata={"endpoint": "/api/v1/text/generate"},
+            metadata={
+                "endpoint": "/api/v1/text/generate",
+                **user_metadata(current_user),
+            },
         )
         response.firebase_output_id = firebase_doc.get("id")
     except RuntimeError:
@@ -121,7 +144,11 @@ async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/image/predict", response_model=ImageResponse)
-async def predict_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def predict_image(
+    file: UploadFile = File(...),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if file.content_type is None or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
 
@@ -151,7 +178,10 @@ async def predict_image(file: UploadFile = File(...), db: Session = Depends(get_
             input_summary=f"{file.filename} | {file.content_type} | {size_bytes} bytes",
             model=response.model,
             output=pydantic_to_dict(response),
-            metadata={"endpoint": "/api/v1/image/predict"},
+            metadata={
+                "endpoint": "/api/v1/image/predict",
+                **user_metadata(current_user),
+            },
         )
         response.firebase_output_id = firebase_doc.get("id")
     except RuntimeError:
@@ -182,6 +212,7 @@ async def predict_image(file: UploadFile = File(...), db: Session = Depends(get_
 
 @app.get("/api/v1/history", response_model=list[InteractionHistoryResponse])
 def get_history(
+    current_user: dict[str, Any] = Depends(get_current_user),
     request_type: str | None = Query(
         default=None,
         pattern="^(text|image)$",
@@ -200,7 +231,11 @@ def get_history(
 
 
 @app.get("/api/v1/history/{interaction_id}", response_model=InteractionHistoryResponse)
-def get_history_item(interaction_id: int, db: Session = Depends(get_db)):
+def get_history_item(
+    interaction_id: int,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     interaction = get_interaction(db=db, interaction_id=interaction_id)
 
     if interaction is None:
@@ -214,14 +249,20 @@ def get_history_item(interaction_id: int, db: Session = Depends(get_db)):
     response_model=FirebaseOutputResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_firebase_output(payload: FirebaseOutputCreate):
+def create_firebase_output(
+    payload: FirebaseOutputCreate,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     try:
         return firebase_save_model_output(
             request_type=payload.request_type,
             input_summary=payload.input_summary,
             model=payload.model,
             output=payload.output,
-            metadata=payload.metadata,
+            metadata={
+                **payload.metadata,
+                **user_metadata(current_user),
+            },
             source_interaction_id=payload.source_interaction_id,
         )
     except RuntimeError as exc:
@@ -230,6 +271,7 @@ def create_firebase_output(payload: FirebaseOutputCreate):
 
 @app.get("/api/v1/firebase/outputs", response_model=list[FirebaseOutputResponse])
 def list_firebase_outputs(
+    current_user: dict[str, Any] = Depends(get_current_user),
     request_type: str | None = Query(
         default=None,
         pattern="^(text|image|manual)$",
@@ -247,7 +289,10 @@ def list_firebase_outputs(
 
 
 @app.get("/api/v1/firebase/outputs/{document_id}", response_model=FirebaseOutputResponse)
-def get_firebase_output(document_id: str):
+def get_firebase_output(
+    document_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     try:
         item = firebase_get_model_output(document_id)
     except RuntimeError as exc:
@@ -260,7 +305,11 @@ def get_firebase_output(document_id: str):
 
 
 @app.patch("/api/v1/firebase/outputs/{document_id}", response_model=FirebaseOutputResponse)
-def update_firebase_output(document_id: str, payload: FirebaseOutputUpdate):
+def update_firebase_output(
+    document_id: str,
+    payload: FirebaseOutputUpdate,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     updates = payload.model_dump(exclude_unset=True)
 
     if not updates:
@@ -278,7 +327,10 @@ def update_firebase_output(document_id: str, payload: FirebaseOutputUpdate):
 
 
 @app.delete("/api/v1/firebase/outputs/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_firebase_output(document_id: str):
+def delete_firebase_output(
+    document_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     try:
         deleted = firebase_delete_model_output(document_id)
     except RuntimeError as exc:
@@ -292,6 +344,7 @@ def delete_firebase_output(document_id: str):
 
 @app.get("/api/v1/postprocess/results", response_model=list[PostprocessResultResponse])
 def list_postprocess_results(
+    current_user: dict[str, Any] = Depends(get_current_user),
     request_type: str | None = Query(
         default=None,
         pattern="^(text|image)$",
@@ -309,7 +362,10 @@ def list_postprocess_results(
 
 
 @app.get("/api/v1/postprocess/results/{job_id}", response_model=PostprocessResultResponse)
-def get_postprocess_result(job_id: str):
+def get_postprocess_result(
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+):
     try:
         item = firebase_get_postprocessed_output(job_id)
     except RuntimeError as exc:

@@ -91,3 +91,10 @@ class PostprocessResultResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None
+
+
+class AuthenticatedUserResponse(BaseModel):
+    uid: str
+    email: str | None = None
+    email_verified: bool | None = None
+    claims: dict[str, Any] = Field(default_factory=dict)

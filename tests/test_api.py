@@ -1,8 +1,30 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.auth import get_current_user
 from app.schemas import BoundingBox, ImagePrediction
 from app.services.postprocess import postprocess_model_output
+
+
+def fake_current_user():
+    return {
+        "uid": "test-user-123",
+        "email": "testuser@example.com",
+        "email_verified": True,
+        "claims": {
+            "uid": "test-user-123",
+            "email": "testuser@example.com",
+            "email_verified": True,
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def override_auth_dependency():
+    app.dependency_overrides[get_current_user] = fake_current_user
+    yield
+    app.dependency_overrides.clear()
 
 
 def fake_firebase_save_model_output(*args, **kwargs):
@@ -224,3 +246,22 @@ def test_postprocess_result_endpoints(monkeypatch):
         get_response = client.get("/api/v1/postprocess/results/job-test-123")
         assert get_response.status_code == 200
         assert get_response.json()["job_id"] == "job-test-123"
+
+
+def test_auth_me_returns_current_user():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["uid"] == "test-user-123"
+    assert data["email"] == "testuser@example.com"
+
+
+def test_protected_endpoint_requires_authentication():
+    app.dependency_overrides.clear()
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/history")
+
+    assert response.status_code == 401
