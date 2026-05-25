@@ -17,6 +17,7 @@ from app.schemas import (
     FirebaseOutputUpdate,
     ImageResponse,
     InteractionHistoryResponse,
+    PostprocessResultResponse,
     TextRequest,
     TextResponse,
 )
@@ -26,9 +27,12 @@ from app.services.firebase_store import (
     list_model_outputs as firebase_list_model_outputs,
     save_model_output as firebase_save_model_output,
     update_model_output as firebase_update_model_output,
+    get_postprocessed_output as firebase_get_postprocessed_output,
+    list_postprocessed_outputs as firebase_list_postprocessed_outputs,
 )
 from app.services.inference import predict_image_objects
 from app.services.llm_client import generate_bitnet_response
+from app.services.rabbitmq_client import publish_postprocess_job
 
 
 @asynccontextmanager
@@ -40,7 +44,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -56,7 +60,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.5.0",
+        "version": "0.6.0",
     }
 
 
@@ -92,6 +96,17 @@ async def generate_text(request: TextRequest, db: Session = Depends(get_db)):
         response.firebase_output_id = firebase_doc.get("id")
     except RuntimeError:
         response.firebase_output_id = None
+
+    try:
+        response.postprocess_job_id = publish_postprocess_job(
+            request_type="text",
+            input_summary=request.prompt[:500],
+            model=response.model,
+            output=pydantic_to_dict(response),
+            firebase_output_id=response.firebase_output_id,
+        )
+    except Exception:
+        response.postprocess_job_id = None
 
     create_interaction(
         db=db,
@@ -141,6 +156,17 @@ async def predict_image(file: UploadFile = File(...), db: Session = Depends(get_
         response.firebase_output_id = firebase_doc.get("id")
     except RuntimeError:
         response.firebase_output_id = None
+
+    try:
+        response.postprocess_job_id = publish_postprocess_job(
+            request_type="image",
+            input_summary=f"{file.filename} | {file.content_type} | {size_bytes} bytes",
+            model=response.model,
+            output=pydantic_to_dict(response),
+            firebase_output_id=response.firebase_output_id,
+        )
+    except Exception:
+        response.postprocess_job_id = None
 
     create_interaction(
         db=db,
@@ -262,3 +288,34 @@ def delete_firebase_output(document_id: str):
         raise HTTPException(status_code=404, detail="Firebase output not found.")
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/v1/postprocess/results", response_model=list[PostprocessResultResponse])
+def list_postprocess_results(
+    request_type: str | None = Query(
+        default=None,
+        pattern="^(text|image)$",
+        description="Filter by postprocessed output type",
+    ),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    try:
+        return firebase_list_postprocessed_outputs(
+            request_type=request_type,
+            limit=limit,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/postprocess/results/{job_id}", response_model=PostprocessResultResponse)
+def get_postprocess_result(job_id: str):
+    try:
+        item = firebase_get_postprocessed_output(job_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if item is None:
+        raise HTTPException(status_code=404, detail="Postprocess result not found.")
+
+    return item

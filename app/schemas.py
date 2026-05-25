@@ -13,6 +13,7 @@ class TextResponse(BaseModel):
     output: str
     model: str
     firebase_output_id: str | None = None
+    postprocess_job_id: str | None = None
 
 
 class BoundingBox(BaseModel):
@@ -36,6 +37,7 @@ class ImageResponse(BaseModel):
     predictions: list[ImagePrediction]
     model: str
     firebase_output_id: str | None = None
+    postprocess_job_id: str | None = None
 
 
 class InteractionHistoryResponse(BaseModel):
@@ -72,5 +74,20 @@ class FirebaseOutputResponse(BaseModel):
     output: dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
     source_interaction_id: int | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class PostprocessResultResponse(BaseModel):
+    id: str
+    job_id: str
+    request_type: str
+    input_summary: str | None = None
+    model: str | None = None
+    firebase_output_id: str | None = None
+    source_interaction_id: int | None = None
+    original_output: dict[str, Any]
+    processed_output: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: str | None = None
     updated_at: str | None = None

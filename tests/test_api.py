@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.schemas import BoundingBox, ImagePrediction
+from app.services.postprocess import postprocess_model_output
 
 
 def fake_firebase_save_model_output(*args, **kwargs):
@@ -16,6 +17,10 @@ def fake_firebase_save_model_output(*args, **kwargs):
         "created_at": "2026-01-01T00:00:00+00:00",
         "updated_at": "2026-01-01T00:00:00+00:00",
     }
+
+
+def fake_publish_postprocess_job(*args, **kwargs):
+    return "job-test-123"
 
 
 async def fake_generate_bitnet_response(prompt: str):
@@ -40,9 +45,10 @@ def test_health_check():
     assert response.json()["status"] == "ok"
 
 
-def test_text_generate_is_recorded(monkeypatch):
+def test_text_generate_is_recorded_and_queued(monkeypatch):
     monkeypatch.setattr("app.main.generate_bitnet_response", fake_generate_bitnet_response)
     monkeypatch.setattr("app.main.firebase_save_model_output", fake_firebase_save_model_output)
+    monkeypatch.setattr("app.main.publish_postprocess_job", fake_publish_postprocess_job)
 
     with TestClient(app) as client:
         response = client.post(
@@ -53,8 +59,8 @@ def test_text_generate_is_recorded(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["model"] == "bitnet-b1.58-2B-4T"
-        assert "Fake BitNet response" in data["output"]
         assert data["firebase_output_id"] == "firebase-test-doc"
+        assert data["postprocess_job_id"] == "job-test-123"
 
         history_response = client.get("/api/v1/history?request_type=text&limit=10")
         assert history_response.status_code == 200
@@ -68,9 +74,10 @@ def test_text_generate_is_recorded(monkeypatch):
     )
 
 
-def test_image_predict_is_recorded(monkeypatch):
+def test_image_predict_is_recorded_and_queued(monkeypatch):
     monkeypatch.setattr("app.main.predict_image_objects", fake_predict_image_objects)
     monkeypatch.setattr("app.main.firebase_save_model_output", fake_firebase_save_model_output)
+    monkeypatch.setattr("app.main.publish_postprocess_job", fake_publish_postprocess_job)
 
     with TestClient(app) as client:
         response = client.post(
@@ -83,8 +90,8 @@ def test_image_predict_is_recorded(monkeypatch):
         assert data["filename"] == "traffic.png"
         assert data["model"] == "yolo11n"
         assert data["num_predictions"] == 1
-        assert data["predictions"][0]["label"] == "car"
         assert data["firebase_output_id"] == "firebase-test-doc"
+        assert data["postprocess_job_id"] == "job-test-123"
 
         history_response = client.get("/api/v1/history?request_type=image&limit=10")
         assert history_response.status_code == 200
@@ -160,3 +167,60 @@ def test_firebase_crud_endpoints(monkeypatch):
 
         delete_response = client.delete("/api/v1/firebase/outputs/firebase-test-doc")
         assert delete_response.status_code == 204
+
+
+def test_postprocess_image_output():
+    result = postprocess_model_output(
+        request_type="image",
+        output={
+            "predictions": [
+                {"label": "car", "confidence": 0.91},
+                {"label": "person", "confidence": 0.81},
+                {"label": "car", "confidence": 0.60},
+            ]
+        },
+    )
+
+    assert result["type"] == "image_postprocessing"
+    assert result["num_predictions"] == 3
+    assert result["label_counts"]["car"] == 2
+    assert result["high_confidence_count"] == 2
+
+
+def test_postprocess_text_output():
+    result = postprocess_model_output(
+        request_type="text",
+        output={"output": "This is a short generated answer."},
+    )
+
+    assert result["type"] == "text_postprocessing"
+    assert result["word_count"] == 6
+
+
+def test_postprocess_result_endpoints(monkeypatch):
+    fake_result = {
+        "id": "job-test-123",
+        "job_id": "job-test-123",
+        "request_type": "image",
+        "input_summary": "traffic.png",
+        "model": "yolo11n",
+        "firebase_output_id": "firebase-test-doc",
+        "source_interaction_id": None,
+        "original_output": {"predictions": []},
+        "processed_output": {"summary": "No objects were detected."},
+        "metadata": {"worker": "postprocess-worker"},
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+
+    monkeypatch.setattr("app.main.firebase_list_postprocessed_outputs", lambda request_type=None, limit=50: [fake_result])
+    monkeypatch.setattr("app.main.firebase_get_postprocessed_output", lambda job_id: fake_result)
+
+    with TestClient(app) as client:
+        list_response = client.get("/api/v1/postprocess/results?limit=5")
+        assert list_response.status_code == 200
+        assert list_response.json()[0]["job_id"] == "job-test-123"
+
+        get_response = client.get("/api/v1/postprocess/results/job-test-123")
+        assert get_response.status_code == 200
+        assert get_response.json()["job_id"] == "job-test-123"

@@ -9,3 +9,4 @@ ultralytics
 sqlalchemy
 psycopg2-binary
 firebase-admin
+pika

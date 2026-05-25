@@ -7,6 +7,8 @@ services:
         condition: service_healthy
       bitnet:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -22,6 +24,25 @@ services:
       - BITNET_TIMEOUT_SECONDS=180
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_OUTPUT_COLLECTION=${FIREBASE_OUTPUT_COLLECTION:-model_outputs}
+      - FIREBASE_POSTPROCESS_COLLECTION=${FIREBASE_POSTPROCESS_COLLECTION:-postprocessed_outputs}
+      - RABBITMQ_URL=amqp://ai_user:ai_password@rabbitmq:5672/
+      - RABBITMQ_QUEUE=postprocess_jobs
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: ai-saas-worker
+    command: python -m app.worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - PYTHONPATH=/app
+      - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+      - FIREBASE_OUTPUT_COLLECTION=${FIREBASE_OUTPUT_COLLECTION:-model_outputs}
+      - FIREBASE_POSTPROCESS_COLLECTION=${FIREBASE_POSTPROCESS_COLLECTION:-postprocessed_outputs}
+      - RABBITMQ_URL=amqp://ai_user:ai_password@rabbitmq:5672/
+      - RABBITMQ_QUEUE=postprocess_jobs
     restart: unless-stopped
 
   bitnet:
@@ -56,6 +77,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: ai-saas-rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=ai_user
+      - RABBITMQ_DEFAULT_PASS=ai_password
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
 volumes:
