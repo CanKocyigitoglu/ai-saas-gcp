@@ -17,14 +17,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+
 COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
-COPY pytest.ini ./pytest.ini
-COPY tests ./tests
-COPY scripts ./scripts
+COPY --chown=appuser:appgroup app ./app
+COPY --chown=appuser:appgroup pytest.ini ./pytest.ini
+COPY --chown=appuser:appgroup tests ./tests
+COPY --chown=appuser:appgroup scripts ./scripts
+
+RUN mkdir -p /app/.cache /app/.config && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 8000
 

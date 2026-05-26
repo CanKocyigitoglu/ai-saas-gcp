@@ -18,15 +18,21 @@ services:
       - YOLO_MODEL_PATH=yolo11n.pt
       - YOLO_CONF_THRESHOLD=0.25
       - YOLO_IMAGE_SIZE=640
-      - DATABASE_URL=postgresql+psycopg2://ai_user:ai_password@postgres:5432/ai_saas
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@postgres:5432/${POSTGRES_DB:-ai_saas}
       - BITNET_BASE_URL=http://bitnet:8080
       - BITNET_MODEL_NAME=microsoft/bitnet-b1.58-2B-4T
       - BITNET_TIMEOUT_SECONDS=180
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_OUTPUT_COLLECTION=${FIREBASE_OUTPUT_COLLECTION:-model_outputs}
       - FIREBASE_POSTPROCESS_COLLECTION=${FIREBASE_POSTPROCESS_COLLECTION:-postprocessed_outputs}
-      - RABBITMQ_URL=amqp://ai_user:ai_password@rabbitmq:5672/
-      - RABBITMQ_QUEUE=postprocess_jobs
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-ai_user}:${RABBITMQ_DEFAULT_PASS:-ai_password}@rabbitmq:5672/
+      - RABBITMQ_QUEUE=${RABBITMQ_QUEUE:-postprocess_jobs}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,api,testserver}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      - MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES:-10485760}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-120}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - ALLOWED_IMAGE_CONTENT_TYPES=${ALLOWED_IMAGE_CONTENT_TYPES:-image/jpeg,image/png,image/webp}
     restart: unless-stopped
 
   worker:
@@ -41,8 +47,14 @@ services:
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
       - FIREBASE_OUTPUT_COLLECTION=${FIREBASE_OUTPUT_COLLECTION:-model_outputs}
       - FIREBASE_POSTPROCESS_COLLECTION=${FIREBASE_POSTPROCESS_COLLECTION:-postprocessed_outputs}
-      - RABBITMQ_URL=amqp://ai_user:ai_password@rabbitmq:5672/
-      - RABBITMQ_QUEUE=postprocess_jobs
+      - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-ai_user}:${RABBITMQ_DEFAULT_PASS:-ai_password}@rabbitmq:5672/
+      - RABBITMQ_QUEUE=${RABBITMQ_QUEUE:-postprocess_jobs}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,api,testserver}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
+      - MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES:-10485760}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-120}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - ALLOWED_IMAGE_CONTENT_TYPES=${ALLOWED_IMAGE_CONTENT_TYPES:-image/jpeg,image/png,image/webp}
     restart: unless-stopped
 
   bitnet:
@@ -65,9 +77,9 @@ services:
     image: postgres:16-alpine
     container_name: ai-saas-postgres
     environment:
-      - POSTGRES_USER=ai_user
-      - POSTGRES_PASSWORD=ai_password
-      - POSTGRES_DB=ai_saas
+      - POSTGRES_USER=${POSTGRES_USER:-ai_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-ai_password}
+      - POSTGRES_DB=${POSTGRES_DB:-ai_saas}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -83,8 +95,8 @@ services:
     image: rabbitmq:3.13-management-alpine
     container_name: ai-saas-rabbitmq
     environment:
-      - RABBITMQ_DEFAULT_USER=ai_user
-      - RABBITMQ_DEFAULT_PASS=ai_password
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-ai_user}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-ai_password}
     ports:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
@@ -118,8 +130,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana

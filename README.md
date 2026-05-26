@@ -19,3 +19,17 @@ Future versions will add real model inference, database persistence, RabbitMQ-ba
 
 ```bash
 docker compose build
+
+## Security notes
+
+- Firebase Authentication protects the business endpoints.
+- Firestore access uses GCP Application Default Credentials and IAM.
+- Internal services are bound to `127.0.0.1`.
+- API security headers are enabled.
+- CORS and trusted hosts are configurable.
+- Request size limits and upload content-type validation are enforced.
+- A lightweight rate limiter is enabled.
+- Sensitive local files are excluded from Git.
+- The API/worker image runs as a non-root user.
+
+See `docs/security.md` for details.

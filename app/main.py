@@ -12,6 +12,7 @@ from app.crud import (
 )
 from app.database import get_db, init_db
 from app.monitoring import setup_metrics
+from app.security import setup_security, validate_image_content_type, validate_upload_size
 from app.schemas import (
     AuthenticatedUserResponse,
     FirebaseOutputCreate,
@@ -47,10 +48,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.9.0",
+    version="1.0.0",
     lifespan=lifespan,
 )
 
+setup_security(app)
 setup_metrics(app)
 
 
@@ -72,7 +74,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.9.0",
+        "version": "1.0.0",
     }
 
 
@@ -152,14 +154,12 @@ async def predict_image(
     current_user: dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if file.content_type is None or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file must be an image.")
+    validate_image_content_type(file.content_type)
 
     content = await file.read()
     size_bytes = len(content)
 
-    if size_bytes == 0:
-        raise HTTPException(status_code=400, detail="Uploaded image is empty.")
+    validate_upload_size(size_bytes)
 
     try:
         predictions = predict_image_objects(content)

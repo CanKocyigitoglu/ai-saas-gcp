@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class TextRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, description="Natural language input for the LLM service")
+    prompt: str = Field(..., min_length=1, max_length=2000, description="Natural language input for the LLM service")
 
 
 class TextResponse(BaseModel):
