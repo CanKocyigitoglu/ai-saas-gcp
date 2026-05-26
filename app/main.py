@@ -11,6 +11,7 @@ from app.crud import (
     list_interactions,
 )
 from app.database import get_db, init_db
+from app.monitoring import setup_metrics
 from app.schemas import (
     AuthenticatedUserResponse,
     FirebaseOutputCreate,
@@ -46,9 +47,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI SaaS on GCP",
     description="A FastAPI-based SaaS prototype for image and language model inference.",
-    version="0.7.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
+
+setup_metrics(app)
 
 
 def pydantic_to_dict(model: Any) -> dict[str, Any]:
@@ -69,7 +72,7 @@ def health_check():
     return {
         "status": "ok",
         "service": "ai-saas-api",
-        "version": "0.7.0",
+        "version": "0.9.0",
     }
 
 

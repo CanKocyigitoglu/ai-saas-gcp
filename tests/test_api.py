@@ -265,3 +265,16 @@ def test_protected_endpoint_requires_authentication():
         response = client.get("/api/v1/history")
 
     assert response.status_code == 401
+
+
+def test_metrics_endpoint_is_public():
+    app.dependency_overrides.clear()
+
+    with TestClient(app) as client:
+        health_response = client.get("/health")
+        metrics_response = client.get("/metrics")
+
+    assert health_response.status_code == 200
+    assert metrics_response.status_code == 200
+    assert "ai_saas_http_requests_total" in metrics_response.text
+    assert "ai_saas_http_request_duration_seconds" in metrics_response.text

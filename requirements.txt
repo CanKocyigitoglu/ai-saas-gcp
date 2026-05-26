@@ -10,3 +10,4 @@ sqlalchemy
 psycopg2-binary
 firebase-admin
 pika
+prometheus-client
