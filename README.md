@@ -366,7 +366,7 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "email": "testuser@example.com",
-    "password": "TestPassword123!",
+    "password": "***********",
     "returnSecureToken": true
   }' | tee firebase-login-response.json | python3 -m json.tool
 ```
