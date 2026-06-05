@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -6,6 +7,7 @@ from typing import Any
 import pika
 
 from app.services.firebase_store import save_postprocessed_output
+from app.services.ecowaste_llm import generate_ecowaste_interpretation
 from app.services.postprocess import postprocess_model_output
 
 
@@ -21,6 +23,28 @@ def process_message(message: dict[str, Any]) -> dict[str, Any]:
         request_type=request_type,
         output=original_output,
     )
+
+    enable_bitnet_interpretation = os.getenv(
+        "ENABLE_BITNET_IMAGE_INTERPRETATION",
+        "true",
+    ).lower() == "true"
+
+    if request_type == "image" and enable_bitnet_interpretation:
+        try:
+            bitnet_interpretation = asyncio.run(
+                generate_ecowaste_interpretation(
+                    original_output=original_output,
+                    processed_output=processed_output,
+                )
+            )
+            processed_output["bitnet_interpretation"] = bitnet_interpretation
+            processed_output["interpretation_model"] = os.getenv(
+                "BITNET_MODEL_NAME",
+                "bitnet-b1.58-2B-4T",
+            )
+        except Exception as exc:
+            processed_output["bitnet_interpretation"] = None
+            processed_output["bitnet_interpretation_error"] = str(exc)
 
     saved = save_postprocessed_output(
         job_id=message["job_id"],

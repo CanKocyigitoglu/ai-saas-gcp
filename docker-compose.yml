@@ -30,6 +30,10 @@ services:
       - FIREBASE_POSTPROCESS_COLLECTION=${FIREBASE_POSTPROCESS_COLLECTION:-postprocessed_outputs}
       - RABBITMQ_URL=amqp://${RABBITMQ_DEFAULT_USER:-ai_user}:${RABBITMQ_DEFAULT_PASS:-ai_password}@rabbitmq:5672/
       - RABBITMQ_QUEUE=${RABBITMQ_QUEUE:-postprocess_jobs}
+      - BITNET_BASE_URL=http://bitnet:8080
+      - BITNET_MODEL_NAME=microsoft/bitnet-b1.58-2B-4T
+      - BITNET_TIMEOUT_SECONDS=180
+      - ENABLE_BITNET_IMAGE_INTERPRETATION=${ENABLE_BITNET_IMAGE_INTERPRETATION:-true}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1,api,testserver}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8000}
       - MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES:-10485760}
@@ -45,6 +49,8 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+      bitnet:
+        condition: service_started
     environment:
       - PYTHONPATH=/app
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
