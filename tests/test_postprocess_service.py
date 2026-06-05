@@ -13,7 +13,7 @@ def test_postprocess_image_output_counts_labels_and_confidence():
         },
     )
 
-    assert result["type"] == "image_postprocessing"
+    assert result["type"] == "ecowaste_image_postprocessing"
     assert result["num_predictions"] == 3
     assert result["label_counts"] == {"car": 2, "person": 1}
     assert result["high_confidence_count"] == 2

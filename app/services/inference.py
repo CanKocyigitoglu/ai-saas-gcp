@@ -83,3 +83,7 @@ def predict_image_objects(image_bytes: bytes) -> list[ImagePrediction]:
         )
 
     return predictions
+
+
+def get_yolo_display_name() -> str:
+    return os.getenv("YOLO_DISPLAY_NAME", os.path.basename(os.getenv("YOLO_MODEL_PATH", "yolo11n.pt")))

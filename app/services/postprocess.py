@@ -1,6 +1,8 @@
 from collections import Counter
 from typing import Any
 
+from app.services.ecowaste_rules import build_ecowaste_recommendations
+
 
 def postprocess_model_output(
     request_type: str,
@@ -41,14 +43,17 @@ def postprocess_model_output(
             and float(prediction.get("confidence", 0.0)) >= 0.75
         ]
 
+        ecowaste_recommendations = build_ecowaste_recommendations(predictions)
+
         return {
-            "type": "image_postprocessing",
+            "type": "ecowaste_image_postprocessing",
             "num_predictions": len(predictions),
             "unique_labels": sorted(set(labels)),
             "label_counts": label_counts,
             "max_confidence": max(confidences) if confidences else None,
             "high_confidence_count": len(high_confidence_predictions),
             "high_confidence_predictions": high_confidence_predictions,
+            "ecowaste_recommendations": ecowaste_recommendations,
             "summary": _build_image_summary(label_counts),
         }
 

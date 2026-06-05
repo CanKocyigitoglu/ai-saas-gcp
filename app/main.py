@@ -34,7 +34,7 @@ from app.services.firebase_store import (
     save_model_output as firebase_save_model_output,
     update_model_output as firebase_update_model_output,
 )
-from app.services.inference import predict_image_objects
+from app.services.inference import get_yolo_display_name, predict_image_objects
 from app.services.llm_client import generate_bitnet_response
 from app.services.rabbitmq_client import publish_postprocess_job
 
@@ -172,7 +172,7 @@ async def predict_image(
         size_bytes=size_bytes,
         num_predictions=len(predictions),
         predictions=predictions,
-        model="yolo11n",
+        model=get_yolo_display_name(),
     )
 
     try:

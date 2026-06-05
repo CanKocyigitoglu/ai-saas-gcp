@@ -18,7 +18,7 @@ def test_worker_process_message_saves_postprocessed_output(monkeypatch):
         "job_id": "job-123",
         "request_type": "image",
         "input_summary": "traffic.png",
-        "model": "yolo11n",
+        "model": "ecowaste-yolo-taco-best",
         "firebase_output_id": "firebase-doc-1",
         "source_interaction_id": 7,
         "output": {

@@ -11,13 +11,16 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - ./models:/app/models:ro
     environment:
       - APP_ENV=development
       - PYTHONPATH=/app
       - YOLO_DEVICE=cpu
-      - YOLO_MODEL_PATH=yolo11n.pt
-      - YOLO_CONF_THRESHOLD=0.25
-      - YOLO_IMAGE_SIZE=640
+      - YOLO_MODEL_PATH=${YOLO_MODEL_PATH:-/app/models/yolo/best.pt}
+      - YOLO_DISPLAY_NAME=${YOLO_DISPLAY_NAME:-ecowaste-yolo-taco-best}
+      - YOLO_CONF_THRESHOLD=${YOLO_CONF_THRESHOLD:-0.30}
+      - YOLO_IMAGE_SIZE=${YOLO_IMAGE_SIZE:-640}
       - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-ai_user}:${POSTGRES_PASSWORD:-ai_password}@postgres:5432/${POSTGRES_DB:-ai_saas}
       - BITNET_BASE_URL=http://bitnet:8080
       - BITNET_MODEL_NAME=microsoft/bitnet-b1.58-2B-4T

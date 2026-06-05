@@ -136,7 +136,7 @@ def test_firebase_postprocessed_output_save_and_get(monkeypatch):
         job_id="job-123",
         request_type="image",
         input_summary="traffic.png",
-        model="yolo11n",
+        model="ecowaste-yolo-taco-best",
         firebase_output_id="firebase-doc-1",
         source_interaction_id=1,
         original_output={"predictions": []},

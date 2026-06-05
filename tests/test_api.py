@@ -110,7 +110,7 @@ def test_image_predict_is_recorded_and_queued(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["filename"] == "traffic.png"
-        assert data["model"] == "yolo11n"
+        assert data["model"] == "ecowaste-yolo-taco-best"
         assert data["num_predictions"] == 1
         assert data["firebase_output_id"] == "firebase-test-doc"
         assert data["postprocess_job_id"] == "job-test-123"
@@ -203,7 +203,7 @@ def test_postprocess_image_output():
         },
     )
 
-    assert result["type"] == "image_postprocessing"
+    assert result["type"] == "ecowaste_image_postprocessing"
     assert result["num_predictions"] == 3
     assert result["label_counts"]["car"] == 2
     assert result["high_confidence_count"] == 2
@@ -225,7 +225,7 @@ def test_postprocess_result_endpoints(monkeypatch):
         "job_id": "job-test-123",
         "request_type": "image",
         "input_summary": "traffic.png",
-        "model": "yolo11n",
+        "model": "ecowaste-yolo-taco-best",
         "firebase_output_id": "firebase-test-doc",
         "source_interaction_id": None,
         "original_output": {"predictions": []},

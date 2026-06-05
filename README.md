@@ -33,3 +33,11 @@ docker compose build
 - The API/worker image runs as a non-root user.
 
 See `docs/security.md` for details.
+
+## Product scenario: EcoWaste Sorting Assistant
+
+This project is now positioned as **EcoWaste Sorting Assistant**, a cloud-based AI SaaS prototype for waste-object detection and recycling guidance.
+
+The system uses a custom YOLO model trained on TACO-style waste classes through `models/yolo/best.pt`. Users upload a waste image, receive object detections, and the RabbitMQ post-processing worker produces sorting recommendations such as recyclable plastic, paper/cardboard, metal, soft plastic, general waste, or manual review.
+
+See `docs/product_scenario.md` for the full product scenario.
